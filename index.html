@@ -21,6 +21,15 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/icon-192x192.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/icon-192x192.png" />
     <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Debug Service Worker (apenas em desenvolvimento) -->
+    <script>
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        const script = document.createElement('script');
+        script.src = '/sw-debug.js';
+        document.head.appendChild(script);
+      }
+    </script>
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />

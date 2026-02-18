@@ -3,10 +3,12 @@
   "short_name": "Estudo Cho",
   "description": "Plataforma de estudos com questões, flashcards e simulados",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#3b82f6",
   "orientation": "portrait-primary",
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icon-72x72.png",

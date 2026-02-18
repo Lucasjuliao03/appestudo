@@ -37,8 +37,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function loadInitialSession() {
     try {
+      // Timeout de 5 segundos para evitar loading infinito
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout ao carregar sessão')), 5000)
+      );
+      
       // Tentar carregar da sessão persistida primeiro (sem requisição)
-      const currentUser = await authService.getCurrentUser();
+      const currentUser = await Promise.race([
+        authService.getCurrentUser(),
+        timeoutPromise
+      ]) as AuthUser | null;
+      
       setUser(currentUser);
     } catch (error) {
       console.error('Erro ao carregar sessão:', error);

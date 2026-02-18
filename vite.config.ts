@@ -18,6 +18,7 @@ export default defineConfig(({ mode }) => ({
     mode === "development" && componentTagger(),
     VitePWA({
       registerType: "autoUpdate",
+      injectRegister: "auto",
       includeAssets: ["favicon.ico", "robots.txt", "icon-*.png"],
       manifest: {
         name: "App Estudo Cho",
@@ -106,6 +107,11 @@ export default defineConfig(({ mode }) => ({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+        navigateFallback: "/index.html",
+        navigateFallbackDenylist: [/^\/_/, /\/[^/?]+\.[^/]+$/, /^\/api\//],
+        cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/.*/i,
@@ -119,20 +125,17 @@ export default defineConfig(({ mode }) => ({
               cacheableResponse: {
                 statuses: [0, 200]
               },
-              networkTimeoutSeconds: 3 // Timeout rápido para usar cache se rede lenta
+              networkTimeoutSeconds: 5 // Timeout para usar cache se rede lenta
             }
           },
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/auth\/v1\/.*/i,
-            handler: "NetworkFirst",
+            handler: "NetworkOnly", // Auth sempre da rede, nunca cache
             options: {
               cacheName: "supabase-auth-cache",
               expiration: {
                 maxEntries: 10,
-                maxAgeSeconds: 60 * 60 // 1 hora para auth
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
+                maxAgeSeconds: 60 * 5 // 5 minutos apenas
               }
             }
           },
@@ -161,7 +164,7 @@ export default defineConfig(({ mode }) => ({
         ]
       },
       devOptions: {
-        enabled: true,
+        enabled: false, // Desabilitar em dev para evitar problemas
         type: "module"
       }
     })

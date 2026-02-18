@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { useEffect, useState } from "react";
 import Index from "./pages/Index";
 import Questoes from "./pages/Questoes";
 import Flashcards from "./pages/Flashcards";
@@ -37,8 +38,19 @@ const queryClient = new QueryClient({
 // Componente para rotas protegidas
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const [timeoutReached, setTimeoutReached] = useState(false);
 
-  if (loading) {
+  // Timeout de 10 segundos para evitar loading infinito
+  useEffect(() => {
+    if (loading) {
+      const timer = setTimeout(() => {
+        setTimeoutReached(true);
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [loading]);
+
+  if (loading && !timeoutReached) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -46,7 +58,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) {
+  if (!user || timeoutReached) {
     return <Navigate to="/login" replace />;
   }
 
@@ -56,8 +68,19 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 // Componente para rota de login (redireciona se já logado)
 function LoginRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const [timeoutReached, setTimeoutReached] = useState(false);
 
-  if (loading) {
+  // Timeout de 10 segundos para evitar loading infinito
+  useEffect(() => {
+    if (loading) {
+      const timer = setTimeout(() => {
+        setTimeoutReached(true);
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [loading]);
+
+  if (loading && !timeoutReached) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
