@@ -39,6 +39,7 @@ const queryClient = new QueryClient({
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const [timeoutReached, setTimeoutReached] = useState(false);
+  const [hasWaited, setHasWaited] = useState(false);
 
   // Timeout de 5 segundos para evitar loading infinito
   useEffect(() => {
@@ -49,11 +50,25 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
       return () => clearTimeout(timer);
     } else {
       setTimeoutReached(false);
+      // Aguardar um pouco após loading terminar para garantir que user está atualizado
+      const waitTimer = setTimeout(() => {
+        setHasWaited(true);
+      }, 200);
+      return () => clearTimeout(waitTimer);
     }
   }, [loading]);
 
   // Mostrar loading apenas se ainda estiver carregando e não atingiu timeout
   if (loading && !timeoutReached) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Aguardar um pouco após loading terminar antes de verificar user
+  if (!loading && !hasWaited) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

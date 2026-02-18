@@ -26,12 +26,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Observar mudanças de autenticação
     const { data: { subscription } } = authService.onAuthStateChange(async (user) => {
-      if (initializedRef.current && mounted) {
-        // Só atualizar se já inicializou (evita duplicar requisições)
+      if (mounted) {
         // Pequeno delay para evitar race conditions
         await new Promise(resolve => setTimeout(resolve, 50));
         if (mounted) {
+          console.log('🔄 Auth state changed:', user ? user.email : 'null');
           setUser(user);
+          // Se já inicializou e recebeu um usuário, atualizar loading
+          if (initializedRef.current && user) {
+            setLoading(false);
+          }
         }
       }
     });
@@ -44,6 +48,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function loadInitialSession() {
     try {
+      // Primeiro, verificar se há sessão no localStorage
+      const sessionKey = 'sb-auth-token';
+      const hasStoredSession = typeof window !== 'undefined' && 
+        localStorage.getItem(sessionKey) !== null;
+      
+      if (hasStoredSession) {
+        console.log('🔐 Sessão encontrada no localStorage, carregando...');
+      }
+      
       // Timeout de 5 segundos para evitar loading infinito
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Timeout ao carregar sessão')), 5000)
@@ -55,9 +68,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         timeoutPromise
       ]) as AuthUser | null;
       
+      if (currentUser) {
+        console.log('✅ Sessão carregada com sucesso:', currentUser.email);
+      } else {
+        console.log('ℹ️ Nenhuma sessão encontrada');
+      }
+      
       setUser(currentUser);
     } catch (error) {
-      console.error('Erro ao carregar sessão:', error);
+      console.error('❌ Erro ao carregar sessão:', error);
       setUser(null);
     } finally {
       setLoading(false);
@@ -67,11 +86,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signIn(email: string, password: string) {
     await authService.signIn(email, password);
-    // Aguardar um pouco para garantir que a sessão foi persistida
-    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Aguardar para garantir que a sessão foi persistida no localStorage
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    // Verificar se a sessão foi realmente persistida
+    const { data: { session } } = await import('@/lib/supabase').then(m => m.supabase.auth.getSession());
+    
+    if (!session) {
+      throw new Error('Falha ao persistir sessão. Tente novamente.');
+    }
+    
+    console.log('✅ Login realizado, sessão persistida:', session.user.email);
+    
     // Buscar usuário atualizado
     const currentUser = await authService.getCurrentUser();
     setUser(currentUser);
+    
     // Aguardar mais um pouco para garantir que o estado foi atualizado
     await new Promise(resolve => setTimeout(resolve, 100));
   }

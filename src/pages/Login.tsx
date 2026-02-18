@@ -25,20 +25,28 @@ export default function LoginPage() {
 
     try {
       await signIn(email, password);
-      // Aguardar um pouco para garantir que o estado foi atualizado e sessão persistida
-      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Aguardar um pouco mais para garantir que tudo foi persistido
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // Verificar se realmente está logado antes de redirecionar
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('Erro ao verificar sessão:', sessionError);
+        throw new Error("Erro ao verificar sessão. Tente novamente.");
+      }
       
       if (session?.user) {
-        // Usar window.location para forçar reload completo (evita problemas com PWA e service worker)
-        // Isso garante que o service worker não interfira e a sessão seja carregada corretamente
-        window.location.href = "/";
+        console.log('✅ Sessão confirmada, redirecionando...');
+        // Usar navigate em vez de window.location para manter a sessão
+        // O AuthContext já atualizou o estado, então o ProtectedRoute deve funcionar
+        navigate("/", { replace: true });
       } else {
         throw new Error("Falha ao criar sessão. Tente novamente.");
       }
     } catch (err: any) {
+      console.error('Erro no login:', err);
       setError(err.message || "Erro ao fazer login. Verifique suas credenciais.");
       setIsLoading(false);
     }

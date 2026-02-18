@@ -61,7 +61,12 @@ export const authService = {
   // Obter usuário atual (otimizado com cache)
   async getCurrentUser() {
     // Primeiro, tentar obter da sessão persistida (sem requisição)
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError) {
+      console.warn('Erro ao obter sessão:', sessionError);
+      return null;
+    }
     
     if (!session?.user) {
       return null;
@@ -137,6 +142,8 @@ export const authService = {
   // Observar mudanças de autenticação
   onAuthStateChange(callback: (user: AuthUser | null) => void) {
     return supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('🔐 Auth state change event:', event, session?.user?.email || 'no session');
+      
       // Ignorar eventos de token refresh para evitar loops
       if (event === 'TOKEN_REFRESHED') {
         return;
@@ -146,7 +153,7 @@ export const authService = {
         // Limpar cache ao mudar sessão para garantir dados atualizados
         clearProfileCache();
         // Pequeno delay para garantir que a sessão foi persistida
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 150));
         const user = await authService.getCurrentUser();
         callback(user);
       } else {
