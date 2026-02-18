@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useRef } from 'react';
 import { authService, AuthUser } from '@/services/supabase/auth';
 
 interface AuthContextType {
@@ -16,15 +16,18 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const initializedRef = useRef(false);
 
   useEffect(() => {
-    // Carregar usuário inicial
-    loadUser();
+    // Carregar sessão persistida primeiro (mais rápido)
+    loadInitialSession();
 
     // Observar mudanças de autenticação
     const { data: { subscription } } = authService.onAuthStateChange(async (user) => {
-      setUser(user);
-      setLoading(false);
+      if (initializedRef.current) {
+        // Só atualizar se já inicializou (evita duplicar requisições)
+        setUser(user);
+      }
     });
 
     return () => {
@@ -32,14 +35,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  async function loadUser() {
+  async function loadInitialSession() {
     try {
+      // Tentar carregar da sessão persistida primeiro (sem requisição)
       const currentUser = await authService.getCurrentUser();
       setUser(currentUser);
     } catch (error) {
-      console.error('Erro ao carregar usuário:', error);
+      console.error('Erro ao carregar sessão:', error);
+      setUser(null);
     } finally {
       setLoading(false);
+      initializedRef.current = true;
     }
   }
 
@@ -59,6 +65,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function signOut() {
     await authService.signOut();
     setUser(null);
+    // Limpar cache do React Query também
+    if (typeof window !== 'undefined' && (window as any).queryClient) {
+      (window as any).queryClient.clear();
+    }
   }
 
   const isAdmin = user?.isAdmin || false;

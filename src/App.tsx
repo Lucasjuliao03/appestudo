@@ -2,8 +2,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
 import Questoes from "./pages/Questoes";
 import Flashcards from "./pages/Flashcards";
@@ -14,8 +14,83 @@ import Admin from "./pages/Admin";
 import Configuracoes from "./pages/Configuracoes";
 import Ranking from "./pages/Ranking";
 import NotFound from "./pages/NotFound";
+import { Loader2 } from "lucide-react";
 
-const queryClient = new QueryClient();
+// Configurar React Query com cache agressivo
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutos - dados considerados frescos
+      gcTime: 1000 * 60 * 30, // 30 minutos - tempo de garbage collection (antes era cacheTime)
+      refetchOnWindowFocus: false, // Não recarregar ao focar na janela
+      refetchOnMount: false, // Não recarregar ao montar componente
+      refetchOnReconnect: true, // Recarregar apenas ao reconectar
+      retry: 1, // Tentar apenas 1 vez em caso de erro
+      retryDelay: 1000, // 1 segundo entre tentativas
+    },
+    mutations: {
+      retry: 1,
+    },
+  },
+});
+
+// Componente para rotas protegidas
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+// Componente para rota de login (redireciona se já logado)
+function LoginRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (user) {
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+const AppRoutes = () => (
+  <Routes>
+    <Route path="/login" element={<LoginRoute><Login /></LoginRoute>} />
+    <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+    <Route path="/questoes" element={<ProtectedRoute><Questoes /></ProtectedRoute>} />
+    <Route path="/flashcards" element={<ProtectedRoute><Flashcards /></ProtectedRoute>} />
+    <Route path="/simulados" element={<ProtectedRoute><Simulados /></ProtectedRoute>} />
+    <Route path="/perfil" element={<ProtectedRoute><Perfil /></ProtectedRoute>} />
+    <Route path="/ranking" element={<ProtectedRoute><Ranking /></ProtectedRoute>} />
+    <Route path="/configuracoes" element={<ProtectedRoute><Configuracoes /></ProtectedRoute>} />
+    <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
+    <Route path="*" element={<NotFound />} />
+  </Routes>
+);
+
+// Expor queryClient globalmente para limpar cache no logout
+if (typeof window !== 'undefined') {
+  (window as any).queryClient = queryClient;
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -24,18 +99,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/admin" element={<Admin />} />
-            <Route path="/configuracoes" element={<Configuracoes />} />
-            <Route path="/" element={<Index />} />
-            <Route path="/questoes" element={<Questoes />} />
-            <Route path="/flashcards" element={<Flashcards />} />
-            <Route path="/simulados" element={<Simulados />} />
-            <Route path="/perfil" element={<Perfil />} />
-            <Route path="/ranking" element={<Ranking />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <AppRoutes />
         </BrowserRouter>
       </TooltipProvider>
     </AuthProvider>

@@ -7,6 +7,15 @@ export interface AuthUser {
   isActive?: boolean;
 }
 
+// Cache do perfil do usuário (evita requisições repetidas)
+const profileCache: Map<string, { isAdmin: boolean; isActive: boolean; timestamp: number }> = new Map();
+const CACHE_DURATION = 1000 * 60 * 5; // 5 minutos
+
+// Limpar cache (usar após logout ou mudanças de permissão)
+function clearProfileCache() {
+  profileCache.clear();
+}
+
 export const authService = {
   // Fazer login
   async signIn(email: string, password: string) {
@@ -42,64 +51,86 @@ export const authService = {
 
   // Fazer logout
   async signOut() {
+    clearProfileCache(); // Limpar cache ao fazer logout
     const { error } = await supabase.auth.signOut();
     if (error) {
       throw error;
     }
   },
 
-  // Obter usuário atual
+  // Obter usuário atual (otimizado com cache)
   async getCurrentUser() {
-    const { data: { user }, error } = await supabase.auth.getUser();
+    // Primeiro, tentar obter da sessão persistida (sem requisição)
+    const { data: { session } } = await supabase.auth.getSession();
     
-    if (error || !user) {
+    if (!session?.user) {
       return null;
     }
 
-    // Buscar informações adicionais do usuário (permissões)
-    // Se a tabela não existir ou houver erro, retorna valores padrão
-    let userProfile = null;
+    const userId = session.user.id;
+
+    // Verificar cache do perfil
+    const cached = profileCache.get(userId);
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      return {
+        id: userId,
+        email: session.user.email || '',
+        isAdmin: cached.isAdmin,
+        isActive: cached.isActive,
+      } as AuthUser;
+    }
+
+    // Se não tem cache válido, buscar do banco
+    let userProfile = { isAdmin: false, isActive: true };
     try {
       const { data, error: profileError } = await supabase
         .from('user_profiles')
         .select('is_admin, is_active')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .single();
       
       if (profileError) {
-        // Se não encontrou (PGRST116), o perfil não existe - criar com valores padrão
         if (profileError.code === 'PGRST116') {
-          console.log('Perfil não encontrado, usando valores padrão');
+          // Perfil não existe - usar valores padrão
+          userProfile = { isAdmin: false, isActive: true };
         } else {
           console.warn('Erro ao buscar perfil do usuário:', profileError);
         }
-      } else {
-        userProfile = data;
+      } else if (data) {
+        userProfile = {
+          isAdmin: data.is_admin || false,
+          isActive: data.is_active !== false,
+        };
       }
+
+      // Atualizar cache
+      profileCache.set(userId, {
+        ...userProfile,
+        timestamp: Date.now(),
+      });
     } catch (error: any) {
-      // Tabela pode não existir ainda ou erro de RLS - usar valores padrão
-      if (error?.code !== 'PGRST301') { // Não logar erro de RLS (normal se não autenticado)
+      if (error?.code !== 'PGRST301') {
         console.warn('Erro ao buscar perfil do usuário:', error);
       }
     }
 
     return {
-      id: user.id,
-      email: user.email || '',
-      isAdmin: userProfile?.is_admin || false,
-      isActive: userProfile?.is_active !== false, // default true
+      id: userId,
+      email: session.user.email || '',
+      isAdmin: userProfile.isAdmin,
+      isActive: userProfile.isActive,
     } as AuthUser;
   },
 
   // Verificar se usuário é admin
   async isAdmin(): Promise<boolean> {
-    const user = await this.getCurrentUser();
+    const user = await authService.getCurrentUser();
     return user?.isAdmin || false;
   },
 
   // Verificar se usuário está ativo
   async isActive(): Promise<boolean> {
-    const user = await this.getCurrentUser();
+    const user = await authService.getCurrentUser();
     return user?.isActive !== false;
   },
 
@@ -107,9 +138,12 @@ export const authService = {
   onAuthStateChange(callback: (user: AuthUser | null) => void) {
     return supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
-        const user = await this.getCurrentUser();
+        // Limpar cache ao mudar sessão para garantir dados atualizados
+        clearProfileCache();
+        const user = await authService.getCurrentUser();
         callback(user);
       } else {
+        clearProfileCache();
         callback(null);
       }
     });

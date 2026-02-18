@@ -315,8 +315,8 @@ export default function HomePage() {
 
     loadData();
 
-    // Recarregar dados a cada 5 segundos para atualizar XP e estatísticas
-    const interval = setInterval(loadData, 5000);
+    // Recarregar dados apenas a cada 30 segundos (reduz requisições)
+    const interval = setInterval(loadData, 30000);
     return () => clearInterval(interval);
   }, []);
 

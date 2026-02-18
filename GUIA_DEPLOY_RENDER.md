@@ -87,7 +87,7 @@ git commit -m "Initial commit"
 ### 2.3 Conectar repositório local ao remoto
 
 ```bash
-git remote add origin https://github.com/SEU_USUARIO/appestudocho.git
+git remote add origin https://github.com/Lucasjuliao03/appestudo.git
 git branch -M main
 git push -u origin main
 ```
