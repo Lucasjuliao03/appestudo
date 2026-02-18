@@ -147,16 +147,26 @@ export const authService = {
     return supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('🔄 Auth state change event:', event, session?.user?.email || 'no user');
       
-      // Não ignorar TOKEN_REFRESHED - pode ser importante para manter sessão ativa
-      // Apenas processar eventos relevantes
-      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED' || (event === 'TOKEN_REFRESHED' && session?.user)) {
+      // Processar TODOS os eventos relevantes (incluindo INITIAL_SESSION)
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED' || 
+          event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
         if (session?.user) {
           // Limpar cache ao mudar sessão para garantir dados atualizados
           clearProfileCache();
           // Pequeno delay para garantir que a sessão foi persistida
-          await new Promise(resolve => setTimeout(resolve, 150));
-          const user = await authService.getCurrentUser();
-          callback(user);
+          await new Promise(resolve => setTimeout(resolve, 100));
+          try {
+            const user = await authService.getCurrentUser();
+            callback(user);
+          } catch (error) {
+            // Se der erro, tentar novamente sem buscar perfil
+            callback({
+              id: session.user.id,
+              email: session.user.email || '',
+              isAdmin: false,
+              isActive: true,
+            } as AuthUser);
+          }
         } else {
           clearProfileCache();
           callback(null);

@@ -25,18 +25,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loadInitialSession();
 
     // Observar mudanças de autenticação
+    // Isso vai ser acionado quando a sessão for carregada ou mudar
     const { data: { subscription } } = authService.onAuthStateChange(async (user) => {
       if (mounted) {
-        // Sempre atualizar quando há mudança de autenticação
-        // Pequeno delay para garantir que a sessão foi persistida
-        await new Promise(resolve => setTimeout(resolve, 100));
-        if (mounted) {
-          setUser(user);
-          if (user) {
-            console.log('✅ Auth state changed - User logged in:', user.email);
-          } else {
-            console.log('✅ Auth state changed - User logged out');
-          }
+        setUser(user);
+        if (user) {
+          console.log('✅ Auth state changed - User logged in:', user.email);
+        } else {
+          console.log('✅ Auth state changed - User logged out');
         }
       }
     });
@@ -48,24 +44,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function loadInitialSession() {
+    // Definir loading como false IMEDIATAMENTE para não travar a UI
+    // O onAuthStateChange vai atualizar o user quando a sessão estiver pronta
+    setLoading(false);
+    initializedRef.current = true;
+    
+    // Tentar carregar sessão de forma assíncrona (não bloqueia)
     try {
-      // Abordagem SIMPLES: apenas uma chamada, sem retries para evitar LockManager timeout
-      // O Supabase gerencia a sessão internamente, não precisamos fazer múltiplas tentativas
       const currentUser = await authService.getCurrentUser();
-      setUser(currentUser);
-      
       if (currentUser) {
+        setUser(currentUser);
         console.log('✅ Sessão carregada:', currentUser.email);
       } else {
+        setUser(null);
         console.log('ℹ️ Nenhuma sessão encontrada');
       }
     } catch (error) {
-      // Se der erro, apenas definir como não logado (não tentar novamente)
-      console.warn('⚠️ Erro ao carregar sessão (será tentado novamente via onAuthStateChange):', error);
+      // Se der erro, apenas definir como não logado
+      // O onAuthStateChange vai tentar novamente quando a sessão estiver disponível
       setUser(null);
-    } finally {
-      setLoading(false);
-      initializedRef.current = true;
+      console.warn('⚠️ Erro ao carregar sessão (onAuthStateChange vai tentar novamente):', error);
     }
   }
 
@@ -76,25 +74,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw error;
     }
 
-    // Aguardar para garantir que a sessão foi persistida no localStorage
-    await new Promise(resolve => setTimeout(resolve, 200));
+    // O onAuthStateChange vai atualizar o user automaticamente
+    // Não precisamos fazer nada aqui, apenas aguardar um pouco para garantir
+    await new Promise(resolve => setTimeout(resolve, 300));
     
-    // Verificar se a sessão foi realmente persistida
-    const { supabase } = await import('@/lib/supabase');
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session?.user) {
-      throw new Error('Falha ao criar sessão. Tente novamente.');
-    }
-
-    // Buscar usuário atualizado
+    // Verificar se a sessão foi criada (o onAuthStateChange já deve ter atualizado)
     const currentUser = await authService.getCurrentUser();
-    setUser(currentUser);
-    
-    // Aguardar mais um pouco para garantir que o estado foi atualizado
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    console.log('✅ Login realizado com sucesso:', currentUser?.email);
+    if (currentUser) {
+      setUser(currentUser);
+      console.log('✅ Login realizado com sucesso:', currentUser.email);
+    } else {
+      // Se ainda não tem user, o onAuthStateChange vai atualizar em breve
+      console.log('ℹ️ Login realizado, aguardando atualização de sessão...');
+    }
   }
 
   async function signUp(email: string, password: string) {
