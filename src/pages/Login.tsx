@@ -1,7 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,8 +14,19 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, user } = useAuth();
   const navigate = useNavigate();
+
+  // Redirecionar automaticamente quando o user for atualizado após login
+  useEffect(() => {
+    if (user && isLoading) {
+      // User foi atualizado durante o processo de login, redirecionar
+      console.log('✅ User atualizado durante login, redirecionando...', user.email);
+      setIsLoading(false);
+      // Usar window.location para forçar reload completo
+      window.location.href = "/";
+    }
+  }, [user, isLoading]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,31 +35,16 @@ export default function LoginPage() {
 
     try {
       await signIn(email, password);
-      
-      // Aguardar um pouco mais para garantir que tudo foi persistido
-      await new Promise(resolve => setTimeout(resolve, 400));
-      
-      // Verificar se realmente está logado antes de redirecionar
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        console.error('Erro ao verificar sessão:', sessionError);
-        throw new Error("Falha ao verificar sessão. Tente novamente.");
-      }
-      
-      if (session?.user) {
-        // Verificar se o token está no localStorage
-        const storedToken = localStorage.getItem('sb-auth-token');
-        if (!storedToken) {
-          console.warn('⚠️ Token não encontrado no localStorage após login');
+      // O useEffect vai detectar quando o user for atualizado e redirecionar automaticamente
+      // Não precisamos fazer nada aqui, apenas aguardar
+      // Se após 3 segundos não redirecionou, mostrar erro
+      setTimeout(() => {
+        if (!user) {
+          setIsLoading(false);
+          setError("Login realizado, mas houve um problema ao carregar a sessão. Tente recarregar a página.");
+          console.warn('⚠️ Login realizado mas user não foi atualizado após 3 segundos');
         }
-        
-        // Usar window.location para forçar reload completo (evita problemas com PWA e service worker)
-        // Isso garante que o service worker não interfira e a sessão seja carregada corretamente
-        window.location.href = "/";
-      } else {
-        throw new Error("Falha ao criar sessão. Tente novamente.");
-      }
+      }, 3000);
     } catch (err: any) {
       console.error('Erro no login:', err);
       setError(err.message || "Erro ao fazer login. Verifique suas credenciais.");

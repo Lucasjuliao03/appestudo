@@ -74,18 +74,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw error;
     }
 
-    // O onAuthStateChange vai atualizar o user automaticamente
-    // Não precisamos fazer nada aqui, apenas aguardar um pouco para garantir
-    await new Promise(resolve => setTimeout(resolve, 300));
+    // Aguardar um pouco para o onAuthStateChange processar
+    await new Promise(resolve => setTimeout(resolve, 200));
     
-    // Verificar se a sessão foi criada (o onAuthStateChange já deve ter atualizado)
-    const currentUser = await authService.getCurrentUser();
-    if (currentUser) {
-      setUser(currentUser);
-      console.log('✅ Login realizado com sucesso:', currentUser.email);
-    } else {
-      // Se ainda não tem user, o onAuthStateChange vai atualizar em breve
-      console.log('ℹ️ Login realizado, aguardando atualização de sessão...');
+    // Tentar atualizar o user imediatamente (não depender apenas do onAuthStateChange)
+    try {
+      const currentUser = await authService.getCurrentUser();
+      if (currentUser) {
+        setUser(currentUser);
+        console.log('✅ Login realizado com sucesso:', currentUser.email);
+      }
+    } catch (e) {
+      // Se der erro, o onAuthStateChange vai atualizar
+      console.log('ℹ️ Login realizado, aguardando onAuthStateChange...');
     }
   }
 
