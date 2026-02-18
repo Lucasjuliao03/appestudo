@@ -144,11 +144,42 @@ export const authService = {
 
   // Observar mudanças de autenticação
   onAuthStateChange(callback: (user: AuthUser | null) => void) {
+    // Primeiro, verificar se já há uma sessão ativa e processar imediatamente
+    // Isso garante que INITIAL_SESSION seja processado mesmo se o evento não for acionado
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        console.log('🔄 Sessão encontrada ao configurar listener, processando...');
+        // Processar sessão inicial imediatamente
+        setTimeout(async () => {
+          try {
+            const user = await authService.getCurrentUser();
+            if (user) {
+              callback(user);
+            } else {
+              callback({
+                id: session.user.id,
+                email: session.user.email || '',
+                isAdmin: false,
+                isActive: true,
+              } as AuthUser);
+            }
+          } catch (error) {
+            callback({
+              id: session.user.id,
+              email: session.user.email || '',
+              isAdmin: false,
+              isActive: true,
+            } as AuthUser);
+          }
+        }, 100);
+      }
+    });
+
+    // Depois, configurar o listener para mudanças futuras
     return supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('🔄 Auth state change event:', event, session?.user?.email || 'no user');
       
       // Processar TODOS os eventos relevantes
-      // INITIAL_SESSION é o mais importante - é acionado quando a sessão é carregada do storage
       if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED' || 
           event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
         
@@ -157,14 +188,18 @@ export const authService = {
           clearProfileCache();
           
           // Aguardar um pouco para garantir que a sessão foi persistida
-          await new Promise(resolve => setTimeout(resolve, 150));
+          // INITIAL_SESSION precisa de mais tempo
+          const delay = event === 'INITIAL_SESSION' ? 200 : 150;
+          await new Promise(resolve => setTimeout(resolve, delay));
           
           try {
             const user = await authService.getCurrentUser();
             if (user) {
+              console.log('✅ User obtido via getCurrentUser:', user.email);
               callback(user);
             } else {
               // Se não conseguiu buscar perfil, criar user básico
+              console.log('⚠️ Não conseguiu buscar perfil, criando user básico');
               callback({
                 id: session.user.id,
                 email: session.user.email || '',
@@ -184,6 +219,7 @@ export const authService = {
           }
         } else {
           // Sem sessão = logout
+          console.log('ℹ️ Sem sessão, fazendo logout');
           clearProfileCache();
           callback(null);
         }

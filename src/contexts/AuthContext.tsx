@@ -20,23 +20,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    let sessionProcessed = false;
     
-    // Carregar sessão persistida primeiro (mais rápido)
-    loadInitialSession();
-
-    // Observar mudanças de autenticação
-    // Isso vai ser acionado quando a sessão for carregada ou mudar
+    // Observar mudanças de autenticação PRIMEIRO
+    // Isso garante que INITIAL_SESSION seja processado
     const { data: { subscription } } = authService.onAuthStateChange(async (user) => {
       if (mounted) {
         // Aguardar um pouco para garantir que o estado foi atualizado
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise(resolve => setTimeout(resolve, 100));
         
         if (mounted) {
           setUser(user);
-          // Atualizar loading quando receber resposta do onAuthStateChange
-          if (initializedRef.current) {
-            setLoading(false);
-          }
+          sessionProcessed = true;
+          setLoading(false); // Sempre atualizar loading quando receber resposta
           
           if (user) {
             console.log('✅ Auth state changed - User logged in:', user.email);
@@ -47,6 +43,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
+    // Aguardar um pouco antes de verificar sessão inicial
+    // Isso garante que o listener esteja pronto
+    setTimeout(async () => {
+      if (mounted) {
+        await loadInitialSession();
+        
+        // Se após 3 segundos não recebeu resposta do onAuthStateChange, 
+        // tentar carregar user diretamente como fallback
+        setTimeout(async () => {
+          if (mounted && !sessionProcessed) {
+            console.log('⚠️ onAuthStateChange não processou, tentando fallback...');
+            try {
+              const currentUser = await authService.getCurrentUser();
+              if (currentUser) {
+                setUser(currentUser);
+                console.log('✅ User carregado via fallback:', currentUser.email);
+              } else {
+                setUser(null);
+                console.log('ℹ️ Nenhum user encontrado via fallback');
+              }
+            } catch (error) {
+              console.warn('⚠️ Erro no fallback:', error);
+              setUser(null);
+            } finally {
+              setLoading(false);
+            }
+          }
+        }, 3000);
+      }
+    }, 100);
+
     return () => {
       mounted = false;
       subscription.unsubscribe();
@@ -55,47 +82,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function loadInitialSession() {
     try {
-      // Aguardar um pouco para garantir que o Supabase está pronto
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
       // Verificar sessão diretamente do Supabase
       const { supabase } = await import('@/lib/supabase');
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError) {
         console.warn('⚠️ Erro ao buscar sessão inicial:', sessionError);
-        setUser(null);
-        setLoading(false);
+        // Se der erro, aguardar onAuthStateChange processar
         initializedRef.current = true;
         return;
       }
 
       if (session?.user) {
-        // Se tem sessão, buscar dados do usuário
-        const currentUser = await authService.getCurrentUser();
-        if (currentUser) {
-          setUser(currentUser);
-          console.log('✅ Sessão carregada do localStorage:', currentUser.email);
-        } else {
-          // Se não conseguiu buscar perfil, criar user básico
-          setUser({
-            id: session.user.id,
-            email: session.user.email || '',
-            isAdmin: false,
-            isActive: true,
-          });
-          console.log('✅ Sessão carregada (sem perfil):', session.user.email);
-        }
+        // Se tem sessão, apenas logar - deixar onAuthStateChange processar
+        // Isso evita race conditions e garante sincronização
+        console.log('✅ Sessão encontrada no localStorage, aguardando onAuthStateChange processar...');
       } else {
-        setUser(null);
-        console.log('ℹ️ Nenhuma sessão encontrada');
+        // Se não tem sessão, definir user como null imediatamente
+        // Mas ainda aguardar onAuthStateChange para confirmar
+        console.log('ℹ️ Nenhuma sessão encontrada no localStorage');
       }
     } catch (error) {
       console.warn('⚠️ Erro ao carregar sessão inicial:', error);
-      setUser(null);
     } finally {
-      setLoading(false);
       initializedRef.current = true;
+      // Não definir loading = false aqui, aguardar onAuthStateChange
     }
   }
 

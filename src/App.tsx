@@ -73,9 +73,22 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 // Componente para rota de login (redireciona se já logado)
 function LoginRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const [hasWaited, setHasWaited] = useState(false);
 
-  // Mostrar loading apenas brevemente
-  if (loading) {
+  // Aguardar um pouco para dar tempo da sessão ser carregada
+  useEffect(() => {
+    if (loading) {
+      const timer = setTimeout(() => {
+        setHasWaited(true);
+      }, 1000); // Aguardar 1 segundo para sessão ser carregada
+      return () => clearTimeout(timer);
+    } else {
+      setHasWaited(true);
+    }
+  }, [loading]);
+
+  // Mostrar loading enquanto está carregando ou não esperou o suficiente
+  if (loading || !hasWaited) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
