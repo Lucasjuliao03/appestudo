@@ -49,88 +49,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function loadInitialSession() {
     try {
-      // Aguardar um pouco para garantir que o Supabase está pronto
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Abordagem SIMPLES: apenas uma chamada, sem retries para evitar LockManager timeout
+      // O Supabase gerencia a sessão internamente, não precisamos fazer múltiplas tentativas
+      const currentUser = await authService.getCurrentUser();
+      setUser(currentUser);
       
-      // Primeiro, verificar se há sessão no localStorage (mais rápido)
-      const { supabase } = await import('@/lib/supabase');
-      
-      // Tentar múltiplas vezes para garantir que a sessão seja carregada
-      let session = null;
-      let attempts = 0;
-      const maxAttempts = 3;
-      
-      while (!session && attempts < maxAttempts) {
-        const { data, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError) {
-          console.warn(`Tentativa ${attempts + 1}: Erro ao buscar sessão:`, sessionError);
-          if (attempts === maxAttempts - 1) {
-            setUser(null);
-            setLoading(false);
-            initializedRef.current = true;
-            return;
-          }
-          await new Promise(resolve => setTimeout(resolve, 200));
-          attempts++;
-          continue;
-        }
-        
-        session = data.session;
-        
-        if (!session && attempts < maxAttempts - 1) {
-          // Aguardar um pouco e tentar novamente (pode ser que ainda esteja carregando)
-          await new Promise(resolve => setTimeout(resolve, 200));
-          attempts++;
-        }
-      }
-
-      if (session?.user) {
-        // Se tem sessão, buscar dados do usuário
-        const currentUser = await authService.getCurrentUser();
-        if (currentUser) {
-          setUser(currentUser);
-          console.log('✅ Sessão carregada do localStorage:', currentUser.email);
-        } else {
-          console.warn('⚠️ Sessão encontrada mas não foi possível obter dados do usuário');
-          setUser(null);
-        }
+      if (currentUser) {
+        console.log('✅ Sessão carregada:', currentUser.email);
       } else {
-        // Se não tem sessão, verificar se há token no localStorage
-        const storedToken = localStorage.getItem('sb-auth-token');
-        if (storedToken) {
-          try {
-            const parsed = JSON.parse(storedToken);
-            if (parsed?.access_token || parsed?.currentSession?.access_token) {
-              // Tentar obter sessão novamente (pode ter sido carregada enquanto verificávamos)
-              await new Promise(resolve => setTimeout(resolve, 300));
-              const { data: { session: retrySession } } = await supabase.auth.getSession();
-              if (retrySession?.user) {
-                const currentUser = await authService.getCurrentUser();
-                if (currentUser) {
-                  setUser(currentUser);
-                  console.log('✅ Sessão restaurada do token:', currentUser.email);
-                } else {
-                  setUser(null);
-                }
-              } else {
-                console.warn('⚠️ Token encontrado mas sessão não pôde ser restaurada');
-                setUser(null);
-              }
-            } else {
-              setUser(null);
-            }
-          } catch (e) {
-            console.warn('⚠️ Erro ao restaurar sessão do token:', e);
-            setUser(null);
-          }
-        } else {
-          setUser(null);
-          console.log('ℹ️ Nenhuma sessão encontrada');
-        }
+        console.log('ℹ️ Nenhuma sessão encontrada');
       }
     } catch (error) {
-      console.error('❌ Erro ao carregar sessão:', error);
+      // Se der erro, apenas definir como não logado (não tentar novamente)
+      console.warn('⚠️ Erro ao carregar sessão (será tentado novamente via onAuthStateChange):', error);
       setUser(null);
     } finally {
       setLoading(false);

@@ -60,14 +60,16 @@ export const authService = {
 
   // Obter usuário atual (otimizado com cache)
   async getCurrentUser() {
-    // Primeiro, tentar obter da sessão persistida (sem requisição)
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session?.user) {
-      return null;
-    }
+    try {
+      // Uma única chamada - sem retries para evitar LockManager timeout
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      // Se houver erro ou não houver sessão, retornar null
+      if (error || !session?.user) {
+        return null;
+      }
 
-    const userId = session.user.id;
+      const userId = session.user.id;
 
     // Verificar cache do perfil
     const cached = profileCache.get(userId);
@@ -114,12 +116,18 @@ export const authService = {
       }
     }
 
-    return {
-      id: userId,
-      email: session.user.email || '',
-      isAdmin: userProfile.isAdmin,
-      isActive: userProfile.isActive,
-    } as AuthUser;
+      return {
+        id: userId,
+        email: session.user.email || '',
+        isAdmin: userProfile.isAdmin,
+        isActive: userProfile.isActive,
+      } as AuthUser;
+    } catch (error: any) {
+      // Se der erro (incluindo LockManager timeout), retornar null silenciosamente
+      // O onAuthStateChange vai tentar novamente quando a sessão estiver disponível
+      console.warn('⚠️ Erro ao obter usuário atual:', error?.message || error);
+      return null;
+    }
   },
 
   // Verificar se usuário é admin
