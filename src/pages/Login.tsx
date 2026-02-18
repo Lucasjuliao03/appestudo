@@ -23,8 +23,10 @@ export default function LoginPage() {
       // User foi atualizado durante o processo de login, redirecionar
       console.log('✅ User atualizado durante login, redirecionando...', user.email);
       setIsLoading(false);
-      // Usar window.location para forçar reload completo
-      window.location.href = "/";
+      // Aguardar um pouco para garantir que tudo foi persistido
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 300);
     }
   }, [user, isLoading]);
 
@@ -35,16 +37,25 @@ export default function LoginPage() {
 
     try {
       await signIn(email, password);
-      // O useEffect vai detectar quando o user for atualizado e redirecionar automaticamente
-      // Não precisamos fazer nada aqui, apenas aguardar
-      // Se após 3 segundos não redirecionou, mostrar erro
-      setTimeout(() => {
-        if (!user) {
-          setIsLoading(false);
-          setError("Login realizado, mas houve um problema ao carregar a sessão. Tente recarregar a página.");
-          console.warn('⚠️ Login realizado mas user não foi atualizado após 3 segundos');
-        }
-      }, 3000);
+      // Aguardar um pouco para garantir que a sessão foi persistida
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Verificar se o user foi atualizado
+      if (user) {
+        // User já foi atualizado, redirecionar
+        window.location.href = "/";
+      } else {
+        // Se ainda não foi atualizado, aguardar mais um pouco
+        setTimeout(() => {
+          if (user) {
+            window.location.href = "/";
+          } else {
+            setIsLoading(false);
+            setError("Login realizado, mas houve um problema ao carregar a sessão. Tente recarregar a página.");
+            console.warn('⚠️ Login realizado mas user não foi atualizado após 2 segundos');
+          }
+        }, 2000);
+      }
     } catch (err: any) {
       console.error('Erro no login:', err);
       setError(err.message || "Erro ao fazer login. Verifique suas credenciais.");

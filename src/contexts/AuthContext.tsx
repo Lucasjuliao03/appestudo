@@ -28,11 +28,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Isso vai ser acionado quando a sessão for carregada ou mudar
     const { data: { subscription } } = authService.onAuthStateChange(async (user) => {
       if (mounted) {
-        setUser(user);
-        if (user) {
-          console.log('✅ Auth state changed - User logged in:', user.email);
-        } else {
-          console.log('✅ Auth state changed - User logged out');
+        // Aguardar um pouco para garantir que o estado foi atualizado
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        if (mounted) {
+          setUser(user);
+          // Atualizar loading quando receber resposta do onAuthStateChange
+          if (initializedRef.current) {
+            setLoading(false);
+          }
+          
+          if (user) {
+            console.log('✅ Auth state changed - User logged in:', user.email);
+          } else {
+            console.log('✅ Auth state changed - User logged out');
+          }
         }
       }
     });
@@ -44,26 +54,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function loadInitialSession() {
-    // Definir loading como false IMEDIATAMENTE para não travar a UI
-    // O onAuthStateChange vai atualizar o user quando a sessão estiver pronta
-    setLoading(false);
-    initializedRef.current = true;
-    
-    // Tentar carregar sessão de forma assíncrona (não bloqueia)
     try {
-      const currentUser = await authService.getCurrentUser();
-      if (currentUser) {
-        setUser(currentUser);
-        console.log('✅ Sessão carregada:', currentUser.email);
+      // Aguardar um pouco para garantir que o Supabase está pronto
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Verificar sessão diretamente do Supabase
+      const { supabase } = await import('@/lib/supabase');
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.warn('⚠️ Erro ao buscar sessão inicial:', sessionError);
+        setUser(null);
+        setLoading(false);
+        initializedRef.current = true;
+        return;
+      }
+
+      if (session?.user) {
+        // Se tem sessão, buscar dados do usuário
+        const currentUser = await authService.getCurrentUser();
+        if (currentUser) {
+          setUser(currentUser);
+          console.log('✅ Sessão carregada do localStorage:', currentUser.email);
+        } else {
+          // Se não conseguiu buscar perfil, criar user básico
+          setUser({
+            id: session.user.id,
+            email: session.user.email || '',
+            isAdmin: false,
+            isActive: true,
+          });
+          console.log('✅ Sessão carregada (sem perfil):', session.user.email);
+        }
       } else {
         setUser(null);
         console.log('ℹ️ Nenhuma sessão encontrada');
       }
     } catch (error) {
-      // Se der erro, apenas definir como não logado
-      // O onAuthStateChange vai tentar novamente quando a sessão estiver disponível
+      console.warn('⚠️ Erro ao carregar sessão inicial:', error);
       setUser(null);
-      console.warn('⚠️ Erro ao carregar sessão (onAuthStateChange vai tentar novamente):', error);
+    } finally {
+      setLoading(false);
+      initializedRef.current = true;
     }
   }
 

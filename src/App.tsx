@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { useEffect, useState } from "react";
 import Index from "./pages/Index";
 import Questoes from "./pages/Questoes";
 import Flashcards from "./pages/Flashcards";
@@ -37,9 +38,22 @@ const queryClient = new QueryClient({
 // Componente para rotas protegidas
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const [hasWaited, setHasWaited] = useState(false);
 
-  // Mostrar loading apenas brevemente (máximo 2 segundos)
-  if (loading) {
+  // Aguardar um pouco para dar tempo da sessão ser carregada
+  useEffect(() => {
+    if (loading) {
+      const timer = setTimeout(() => {
+        setHasWaited(true);
+      }, 1000); // Aguardar 1 segundo para sessão ser carregada
+      return () => clearTimeout(timer);
+    } else {
+      setHasWaited(true);
+    }
+  }, [loading]);
+
+  // Mostrar loading enquanto está carregando ou não esperou o suficiente
+  if (loading || !hasWaited) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

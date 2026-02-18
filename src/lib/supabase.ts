@@ -48,6 +48,9 @@ export const supabase = createClient(supabaseUrl || 'https://placeholder.supabas
     storage: getStorage(),
     storageKey: 'sb-auth-token',
     flowType: 'pkce',
+    // Configurações para manter sessão por mais tempo
+    // O Supabase por padrão mantém sessão por 1 hora, mas renova automaticamente
+    // Com autoRefreshToken: true, a sessão é renovada automaticamente
   },
   global: {
     headers: {
@@ -55,4 +58,13 @@ export const supabase = createClient(supabaseUrl || 'https://placeholder.supabas
     },
   },
 });
+
+// Listener para detectar quando o token é renovado
+if (typeof window !== 'undefined') {
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'TOKEN_REFRESHED' && session) {
+      console.log('🔄 Token renovado automaticamente');
+    }
+  });
+}
 

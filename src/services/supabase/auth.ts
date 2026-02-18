@@ -147,19 +147,34 @@ export const authService = {
     return supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('🔄 Auth state change event:', event, session?.user?.email || 'no user');
       
-      // Processar TODOS os eventos relevantes (incluindo INITIAL_SESSION)
+      // Processar TODOS os eventos relevantes
+      // INITIAL_SESSION é o mais importante - é acionado quando a sessão é carregada do storage
       if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED' || 
           event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+        
         if (session?.user) {
           // Limpar cache ao mudar sessão para garantir dados atualizados
           clearProfileCache();
-          // Pequeno delay para garantir que a sessão foi persistida
-          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // Aguardar um pouco para garantir que a sessão foi persistida
+          await new Promise(resolve => setTimeout(resolve, 150));
+          
           try {
             const user = await authService.getCurrentUser();
-            callback(user);
+            if (user) {
+              callback(user);
+            } else {
+              // Se não conseguiu buscar perfil, criar user básico
+              callback({
+                id: session.user.id,
+                email: session.user.email || '',
+                isAdmin: false,
+                isActive: true,
+              } as AuthUser);
+            }
           } catch (error) {
-            // Se der erro, tentar novamente sem buscar perfil
+            console.warn('⚠️ Erro ao buscar user no onAuthStateChange:', error);
+            // Se der erro, criar user básico da sessão
             callback({
               id: session.user.id,
               email: session.user.email || '',
@@ -168,6 +183,7 @@ export const authService = {
             } as AuthUser);
           }
         } else {
+          // Sem sessão = logout
           clearProfileCache();
           callback(null);
         }
