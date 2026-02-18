@@ -101,21 +101,35 @@ export const simuladosService = {
       
       if (error) {
         console.error('Erro ao buscar ranking via RPC:', error);
+        console.log('Detalhes do erro:', JSON.stringify(error, null, 2));
         console.log('Tentando fallback...');
         // Fallback: buscar diretamente
         return await this.getRankingFallback(limit);
       }
 
-      if (!data || data.length === 0) {
-        console.log('Nenhum dado retornado do RPC, tentando fallback...');
+      if (!data) {
+        console.log('Nenhum dado retornado do RPC (data é null), tentando fallback...');
         return await this.getRankingFallback(limit);
       }
 
-      // Remover duplicatas
+      if (data.length === 0) {
+        console.log('Ranking vazio - nenhum usuário com simulados encontrado');
+        return [];
+      }
+
+      // Remover duplicatas e garantir tipos corretos
       const unique = Array.from(
-        new Map(data.map((u: RankingUser) => [u.user_id, u])).values()
+        new Map(data.map((u: any) => [u.user_id, {
+          user_id: u.user_id,
+          display_name: u.display_name || null,
+          email: u.email || '',
+          total_questions: Number(u.total_questions) || 0,
+          total_correct: Number(u.total_correct) || 0,
+          accuracy: Number(u.accuracy) || 0,
+        }])).values()
       );
 
+      console.log(`✅ Ranking carregado: ${unique.length} usuários`);
       return unique;
     } catch (err) {
       console.error('Erro ao buscar ranking:', err);
@@ -123,33 +137,42 @@ export const simuladosService = {
     }
   },
 
-  // Fallback para ranking (quando RPC falha)
+  // Fallback para ranking (quando RPC falha) - baseado em QUESTÕES, não simulados
   async getRankingFallback(limit: number): Promise<RankingUser[]> {
     try {
-      // Buscar todos os simulados agregados
-      const { data: simulados, error } = await supabase
-        .from('simulados')
-        .select('user_id, total_questions, correct_answers')
-        .order('created_at', { ascending: false });
+      // Buscar todas as tentativas (questões realizadas)
+      const { data: attempts, error } = await supabase
+        .from('attempts')
+        .select('user_id, question_id, is_correct')
+        .order('answered_at', { ascending: false });
 
       if (error) {
-        console.error('Erro ao buscar simulados no fallback:', error);
+        console.error('Erro ao buscar tentativas no fallback:', error);
         return [];
       }
 
-      if (!simulados || simulados.length === 0) {
+      if (!attempts || attempts.length === 0) {
         return [];
       }
 
-      // Agregar por usuário
-      const userStats = new Map<string, { total: number; correct: number }>();
+      // Agregar por usuário (contando questões ÚNICAS, não tentativas)
+      const userStats = new Map<string, { totalQuestions: Set<string>; correctQuestions: Set<string> }>();
       
-      simulados.forEach(s => {
-        const current = userStats.get(s.user_id) || { total: 0, correct: 0 };
-        userStats.set(s.user_id, {
-          total: current.total + s.total_questions,
-          correct: current.correct + s.correct_answers,
-        });
+      attempts.forEach(a => {
+        const current = userStats.get(a.user_id) || { 
+          totalQuestions: new Set<string>(), 
+          correctQuestions: new Set<string>() 
+        };
+        
+        // Adicionar questão ao total (Set garante unicidade)
+        current.totalQuestions.add(a.question_id);
+        
+        // Se acertou, adicionar aos acertos
+        if (a.is_correct) {
+          current.correctQuestions.add(a.question_id);
+        }
+        
+        userStats.set(a.user_id, current);
       });
 
       // Buscar nomes e emails dos usuários
@@ -214,21 +237,23 @@ export const simuladosService = {
       await Promise.all(emailPromises);
       
       // Construir ranking
-      for (const [userId, stats] of userStats.entries()) {
-        const accuracy = stats.total > 0 ? (stats.correct / stats.total) * 100 : 0;
-        
-        const displayName = settingsMap.get(userId) || null;
-        const email = emailMap.get(userId) || `Usuário ${userId.substring(0, 8)}...`;
+    for (const [userId, stats] of userStats.entries()) {
+      const totalQuestions = stats.totalQuestions.size;
+      const totalCorrect = stats.correctQuestions.size;
+      const accuracy = totalQuestions > 0 ? (totalCorrect / totalQuestions) * 100 : 0;
+      
+      const displayName = settingsMap.get(userId) || null;
+      const email = emailMap.get(userId) || `Usuário ${userId.substring(0, 8)}...`;
 
-        ranking.push({
-          user_id: userId,
-          display_name: displayName,
-          email,
-          total_questions: stats.total,
-          total_correct: stats.correct,
-          accuracy: Math.round(accuracy * 100) / 100, // Arredondar para 2 casas decimais
-        });
-      }
+      ranking.push({
+        user_id: userId,
+        display_name: displayName,
+        email,
+        total_questions: totalQuestions,
+        total_correct: totalCorrect,
+        accuracy: Math.round(accuracy * 100) / 100, // Arredondar para 2 casas decimais
+      });
+    }
 
       // Ordenar por total de questões e acurácia
       return ranking
