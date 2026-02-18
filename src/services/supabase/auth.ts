@@ -137,9 +137,16 @@ export const authService = {
   // Observar mudanças de autenticação
   onAuthStateChange(callback: (user: AuthUser | null) => void) {
     return supabase.auth.onAuthStateChange(async (event, session) => {
+      // Ignorar eventos de token refresh para evitar loops
+      if (event === 'TOKEN_REFRESHED') {
+        return;
+      }
+      
       if (session?.user) {
         // Limpar cache ao mudar sessão para garantir dados atualizados
         clearProfileCache();
+        // Pequeno delay para garantir que a sessão foi persistida
+        await new Promise(resolve => setTimeout(resolve, 100));
         const user = await authService.getCurrentUser();
         callback(user);
       } else {

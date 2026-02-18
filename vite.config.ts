@@ -132,10 +132,9 @@ export default defineConfig(({ mode }) => ({
             urlPattern: /^https:\/\/.*\.supabase\.co\/auth\/v1\/.*/i,
             handler: "NetworkOnly", // Auth sempre da rede, nunca cache
             options: {
-              cacheName: "supabase-auth-cache",
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 5 // 5 minutos apenas
+              networkTimeoutSeconds: 10, // Timeout maior para auth
+              cacheableResponse: {
+                statuses: [0, 200]
               }
             }
           },

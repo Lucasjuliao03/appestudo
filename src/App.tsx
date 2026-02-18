@@ -40,16 +40,19 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const [timeoutReached, setTimeoutReached] = useState(false);
 
-  // Timeout de 10 segundos para evitar loading infinito
+  // Timeout de 5 segundos para evitar loading infinito
   useEffect(() => {
     if (loading) {
       const timer = setTimeout(() => {
         setTimeoutReached(true);
-      }, 10000);
+      }, 5000);
       return () => clearTimeout(timer);
+    } else {
+      setTimeoutReached(false);
     }
   }, [loading]);
 
+  // Mostrar loading apenas se ainda estiver carregando e não atingiu timeout
   if (loading && !timeoutReached) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -58,10 +61,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // Se não tem usuário ou atingiu timeout, redirecionar para login
   if (!user || timeoutReached) {
     return <Navigate to="/login" replace />;
   }
 
+  // Se tem usuário, mostrar conteúdo
   return <>{children}</>;
 }
 
@@ -70,16 +75,19 @@ function LoginRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const [timeoutReached, setTimeoutReached] = useState(false);
 
-  // Timeout de 10 segundos para evitar loading infinito
+  // Timeout de 5 segundos para evitar loading infinito
   useEffect(() => {
     if (loading) {
       const timer = setTimeout(() => {
         setTimeoutReached(true);
-      }, 10000);
+      }, 5000);
       return () => clearTimeout(timer);
+    } else {
+      setTimeoutReached(false);
     }
   }, [loading]);
 
+  // Mostrar loading apenas se ainda estiver carregando e não atingiu timeout
   if (loading && !timeoutReached) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -88,10 +96,12 @@ function LoginRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // Se tem usuário, redirecionar para home
   if (user) {
     return <Navigate to="/" replace />;
   }
 
+  // Se não tem usuário, mostrar login
   return <>{children}</>;
 }
 

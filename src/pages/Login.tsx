@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,10 +25,21 @@ export default function LoginPage() {
 
     try {
       await signIn(email, password);
-      navigate("/");
+      // Aguardar um pouco para garantir que o estado foi atualizado e sessão persistida
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Verificar se realmente está logado antes de redirecionar
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user) {
+        // Usar window.location para forçar reload completo (evita problemas com PWA e service worker)
+        // Isso garante que o service worker não interfira e a sessão seja carregada corretamente
+        window.location.href = "/";
+      } else {
+        throw new Error("Falha ao criar sessão. Tente novamente.");
+      }
     } catch (err: any) {
       setError(err.message || "Erro ao fazer login. Verifique suas credenciais.");
-    } finally {
       setIsLoading(false);
     }
   };

@@ -19,18 +19,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const initializedRef = useRef(false);
 
   useEffect(() => {
+    let mounted = true;
+    
     // Carregar sessão persistida primeiro (mais rápido)
     loadInitialSession();
 
     // Observar mudanças de autenticação
     const { data: { subscription } } = authService.onAuthStateChange(async (user) => {
-      if (initializedRef.current) {
+      if (initializedRef.current && mounted) {
         // Só atualizar se já inicializou (evita duplicar requisições)
-        setUser(user);
+        // Pequeno delay para evitar race conditions
+        await new Promise(resolve => setTimeout(resolve, 50));
+        if (mounted) {
+          setUser(user);
+        }
       }
     });
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
     };
   }, []);
@@ -60,8 +67,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signIn(email: string, password: string) {
     await authService.signIn(email, password);
+    // Aguardar um pouco para garantir que a sessão foi persistida
+    await new Promise(resolve => setTimeout(resolve, 100));
+    // Buscar usuário atualizado
     const currentUser = await authService.getCurrentUser();
     setUser(currentUser);
+    // Aguardar mais um pouco para garantir que o estado foi atualizado
+    await new Promise(resolve => setTimeout(resolve, 100));
   }
 
   async function signUp(email: string, password: string) {
