@@ -25,11 +25,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Observar mudanças de autenticação PRIMEIRO
     // Isso garante que INITIAL_SESSION seja processado
     const { data: { subscription } } = authService.onAuthStateChange(async (user) => {
+      console.log('📞 Callback do onAuthStateChange chamado, user:', user?.email || 'null');
+      
       if (mounted) {
         // Aguardar um pouco para garantir que o estado foi atualizado
         await new Promise(resolve => setTimeout(resolve, 50));
         
         if (mounted) {
+          console.log('🔄 Atualizando user no contexto:', user?.email || 'null');
           setUser(user);
           sessionProcessed = true;
           setLoading(false); // Sempre atualizar loading quando receber resposta
@@ -49,11 +52,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (mounted) {
         await loadInitialSession();
         
-        // Se após 2 segundos não recebeu resposta do onAuthStateChange, 
+        // Se após 1.5 segundos não recebeu resposta do onAuthStateChange, 
         // tentar carregar user diretamente como fallback
         setTimeout(async () => {
           if (mounted && !sessionProcessed) {
-            console.log('⚠️ onAuthStateChange não processou em 2s, tentando fallback...');
+            console.log('⚠️ onAuthStateChange não processou em 1.5s, tentando fallback...');
             try {
               const currentUser = await authService.getCurrentUser();
               if (currentUser) {
@@ -71,9 +74,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               setLoading(false);
             }
           }
-        }, 2000);
+        }, 1500);
       }
-    }, 150);
+    }, 100);
 
     return () => {
       mounted = false;

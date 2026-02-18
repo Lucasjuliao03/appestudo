@@ -144,46 +144,83 @@ export const authService = {
 
   // Observar mudanças de autenticação
   onAuthStateChange(callback: (user: AuthUser | null) => void) {
-    let initialCheckDone = false;
-    let initialUserProcessed = false;
+    let processing = false;
+    let lastProcessedUserId: string | null = null;
+    let lastProcessedTime = 0;
     
-    // Primeiro, verificar se já há uma sessão ativa e processar imediatamente
-    // Isso garante que a sessão seja processada mesmo se INITIAL_SESSION não for acionado
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      initialCheckDone = true;
+    // Função auxiliar para processar sessão
+    const processSession = async (session: any, source: string) => {
+      console.log(`🔄 processSession chamado de ${source}, session:`, session?.user?.email || 'null');
       
-      if (session?.user && !initialUserProcessed) {
-        console.log('🔄 Sessão encontrada ao configurar listener, processando...');
-        initialUserProcessed = true;
-        
-        // Processar sessão inicial imediatamente
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        try {
-          const user = await authService.getCurrentUser();
-          if (user) {
-            console.log('✅ User obtido via verificação inicial:', user.email);
-            callback(user);
-          } else {
-            console.log('⚠️ Não conseguiu buscar perfil na verificação inicial, criando user básico');
-            callback({
-              id: session.user.id,
-              email: session.user.email || '',
-              isAdmin: false,
-              isActive: true,
-            } as AuthUser);
-          }
-        } catch (error) {
-          console.warn('⚠️ Erro na verificação inicial:', error);
-          callback({
+      if (!session?.user) {
+        console.log('ℹ️ Sem sessão, chamando callback(null)');
+        lastProcessedUserId = null;
+        clearProfileCache();
+        callback(null);
+        return;
+      }
+
+      // Se já processamos este user recentemente (últimos 300ms), ignorar (evita duplicação)
+      const now = Date.now();
+      if (lastProcessedUserId === session.user.id && (now - lastProcessedTime) < 300) {
+        console.log(`ℹ️ Sessão do usuário ${session.user.email} já foi processada há ${now - lastProcessedTime}ms, ignorando...`);
+        return;
+      }
+
+      // Evitar processamento simultâneo (mas permitir se passou tempo suficiente)
+      if (processing && (now - lastProcessedTime) < 300) {
+        console.log(`ℹ️ Já processando sessão, ignorando chamada de ${source}`);
+        return;
+      }
+
+      processing = true;
+      lastProcessedUserId = session.user.id;
+      lastProcessedTime = now;
+      clearProfileCache();
+      
+      console.log(`⏳ Processando sessão de ${session.user.email} via ${source}...`);
+      
+      // Aguardar um pouco para garantir que a sessão foi persistida
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      try {
+        const user = await authService.getCurrentUser();
+        if (user) {
+          console.log(`✅ User obtido via ${source}:`, user.email);
+          callback(user);
+        } else {
+          // Se não conseguiu buscar perfil, criar user básico
+          console.log('⚠️ Não conseguiu buscar perfil, criando user básico');
+          const basicUser = {
             id: session.user.id,
             email: session.user.email || '',
             isAdmin: false,
             isActive: true,
-          } as AuthUser);
+          } as AuthUser;
+          callback(basicUser);
         }
-      } else if (!session?.user) {
-        // Se não tem sessão, chamar callback com null imediatamente
+      } catch (error) {
+        console.warn('⚠️ Erro ao buscar user:', error);
+        // Se der erro, criar user básico da sessão
+        const basicUser = {
+          id: session.user.id,
+          email: session.user.email || '',
+          isAdmin: false,
+          isActive: true,
+        } as AuthUser;
+        callback(basicUser);
+      } finally {
+        processing = false;
+        console.log(`✅ Processamento de ${source} concluído`);
+      }
+    };
+
+    // Primeiro, verificar se já há uma sessão ativa
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        console.log('🔄 Sessão encontrada ao configurar listener, processando...');
+        await processSession(session, 'verificação inicial');
+      } else {
         console.log('ℹ️ Nenhuma sessão encontrada na verificação inicial');
         callback(null);
       }
@@ -193,62 +230,11 @@ export const authService = {
     return supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('🔄 Auth state change event:', event, session?.user?.email || 'no user');
       
-      // Se já processamos a verificação inicial e o evento é SIGNED_IN (refresh),
-      // pode ser duplicado - verificar se já processamos
-      if (event === 'SIGNED_IN' && initialCheckDone && initialUserProcessed) {
-        console.log('ℹ️ SIGNED_IN após refresh ignorado (já processamos sessão inicial)');
-        return;
-      }
-      
       // Processar TODOS os eventos relevantes
       if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED' || 
           event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
         
-        if (session?.user) {
-          // Marcar como processado se for SIGNED_IN ou INITIAL_SESSION
-          if (event === 'INITIAL_SESSION' || (event === 'SIGNED_IN' && !initialUserProcessed)) {
-            initialUserProcessed = true;
-          }
-          
-          // Limpar cache ao mudar sessão para garantir dados atualizados
-          clearProfileCache();
-          
-          // Aguardar um pouco para garantir que a sessão foi persistida
-          const delay = (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') ? 200 : 150;
-          await new Promise(resolve => setTimeout(resolve, delay));
-          
-          try {
-            const user = await authService.getCurrentUser();
-            if (user) {
-              console.log('✅ User obtido via getCurrentUser:', user.email);
-              callback(user);
-            } else {
-              // Se não conseguiu buscar perfil, criar user básico
-              console.log('⚠️ Não conseguiu buscar perfil, criando user básico');
-              callback({
-                id: session.user.id,
-                email: session.user.email || '',
-                isAdmin: false,
-                isActive: true,
-              } as AuthUser);
-            }
-          } catch (error) {
-            console.warn('⚠️ Erro ao buscar user no onAuthStateChange:', error);
-            // Se der erro, criar user básico da sessão
-            callback({
-              id: session.user.id,
-              email: session.user.email || '',
-              isAdmin: false,
-              isActive: true,
-            } as AuthUser);
-          }
-        } else {
-          // Sem sessão = logout
-          console.log('ℹ️ Sem sessão, fazendo logout');
-          initialUserProcessed = false;
-          clearProfileCache();
-          callback(null);
-        }
+        await processSession(session, `onAuthStateChange (${event})`);
       }
     });
   },
