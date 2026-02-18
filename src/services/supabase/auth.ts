@@ -144,26 +144,28 @@ export const authService = {
 
   // Observar mudanças de autenticação
   onAuthStateChange(callback: (user: AuthUser | null) => void) {
+    let initialCheckDone = false;
+    let initialUserProcessed = false;
+    
     // Primeiro, verificar se já há uma sessão ativa e processar imediatamente
-    // Isso garante que INITIAL_SESSION seja processado mesmo se o evento não for acionado
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
+    // Isso garante que a sessão seja processada mesmo se INITIAL_SESSION não for acionado
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      initialCheckDone = true;
+      
+      if (session?.user && !initialUserProcessed) {
         console.log('🔄 Sessão encontrada ao configurar listener, processando...');
+        initialUserProcessed = true;
+        
         // Processar sessão inicial imediatamente
-        setTimeout(async () => {
-          try {
-            const user = await authService.getCurrentUser();
-            if (user) {
-              callback(user);
-            } else {
-              callback({
-                id: session.user.id,
-                email: session.user.email || '',
-                isAdmin: false,
-                isActive: true,
-              } as AuthUser);
-            }
-          } catch (error) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        try {
+          const user = await authService.getCurrentUser();
+          if (user) {
+            console.log('✅ User obtido via verificação inicial:', user.email);
+            callback(user);
+          } else {
+            console.log('⚠️ Não conseguiu buscar perfil na verificação inicial, criando user básico');
             callback({
               id: session.user.id,
               email: session.user.email || '',
@@ -171,7 +173,19 @@ export const authService = {
               isActive: true,
             } as AuthUser);
           }
-        }, 100);
+        } catch (error) {
+          console.warn('⚠️ Erro na verificação inicial:', error);
+          callback({
+            id: session.user.id,
+            email: session.user.email || '',
+            isAdmin: false,
+            isActive: true,
+          } as AuthUser);
+        }
+      } else if (!session?.user) {
+        // Se não tem sessão, chamar callback com null imediatamente
+        console.log('ℹ️ Nenhuma sessão encontrada na verificação inicial');
+        callback(null);
       }
     });
 
@@ -179,17 +193,28 @@ export const authService = {
     return supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('🔄 Auth state change event:', event, session?.user?.email || 'no user');
       
+      // Se já processamos a verificação inicial e o evento é SIGNED_IN (refresh),
+      // pode ser duplicado - verificar se já processamos
+      if (event === 'SIGNED_IN' && initialCheckDone && initialUserProcessed) {
+        console.log('ℹ️ SIGNED_IN após refresh ignorado (já processamos sessão inicial)');
+        return;
+      }
+      
       // Processar TODOS os eventos relevantes
       if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED' || 
           event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
         
         if (session?.user) {
+          // Marcar como processado se for SIGNED_IN ou INITIAL_SESSION
+          if (event === 'INITIAL_SESSION' || (event === 'SIGNED_IN' && !initialUserProcessed)) {
+            initialUserProcessed = true;
+          }
+          
           // Limpar cache ao mudar sessão para garantir dados atualizados
           clearProfileCache();
           
           // Aguardar um pouco para garantir que a sessão foi persistida
-          // INITIAL_SESSION precisa de mais tempo
-          const delay = event === 'INITIAL_SESSION' ? 200 : 150;
+          const delay = (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') ? 200 : 150;
           await new Promise(resolve => setTimeout(resolve, delay));
           
           try {
@@ -220,6 +245,7 @@ export const authService = {
         } else {
           // Sem sessão = logout
           console.log('ℹ️ Sem sessão, fazendo logout');
+          initialUserProcessed = false;
           clearProfileCache();
           callback(null);
         }

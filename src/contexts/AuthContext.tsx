@@ -27,7 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = authService.onAuthStateChange(async (user) => {
       if (mounted) {
         // Aguardar um pouco para garantir que o estado foi atualizado
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 50));
         
         if (mounted) {
           setUser(user);
@@ -49,30 +49,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (mounted) {
         await loadInitialSession();
         
-        // Se após 3 segundos não recebeu resposta do onAuthStateChange, 
+        // Se após 2 segundos não recebeu resposta do onAuthStateChange, 
         // tentar carregar user diretamente como fallback
         setTimeout(async () => {
           if (mounted && !sessionProcessed) {
-            console.log('⚠️ onAuthStateChange não processou, tentando fallback...');
+            console.log('⚠️ onAuthStateChange não processou em 2s, tentando fallback...');
             try {
               const currentUser = await authService.getCurrentUser();
               if (currentUser) {
                 setUser(currentUser);
+                setLoading(false);
                 console.log('✅ User carregado via fallback:', currentUser.email);
               } else {
                 setUser(null);
+                setLoading(false);
                 console.log('ℹ️ Nenhum user encontrado via fallback');
               }
             } catch (error) {
               console.warn('⚠️ Erro no fallback:', error);
               setUser(null);
-            } finally {
               setLoading(false);
             }
           }
-        }, 3000);
+        }, 2000);
       }
-    }, 100);
+    }, 150);
 
     return () => {
       mounted = false;
