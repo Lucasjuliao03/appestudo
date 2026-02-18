@@ -61,12 +61,7 @@ export const authService = {
   // Obter usuário atual (otimizado com cache)
   async getCurrentUser() {
     // Primeiro, tentar obter da sessão persistida (sem requisição)
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    
-    if (sessionError) {
-      console.warn('Erro ao obter sessão:', sessionError);
-      return null;
-    }
+    const { data: { session } } = await supabase.auth.getSession();
     
     if (!session?.user) {
       return null;
@@ -142,23 +137,22 @@ export const authService = {
   // Observar mudanças de autenticação
   onAuthStateChange(callback: (user: AuthUser | null) => void) {
     return supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('🔐 Auth state change event:', event, session?.user?.email || 'no session');
+      console.log('🔄 Auth state change event:', event, session?.user?.email || 'no user');
       
-      // Ignorar eventos de token refresh para evitar loops
-      if (event === 'TOKEN_REFRESHED') {
-        return;
-      }
-      
-      if (session?.user) {
-        // Limpar cache ao mudar sessão para garantir dados atualizados
-        clearProfileCache();
-        // Pequeno delay para garantir que a sessão foi persistida
-        await new Promise(resolve => setTimeout(resolve, 150));
-        const user = await authService.getCurrentUser();
-        callback(user);
-      } else {
-        clearProfileCache();
-        callback(null);
+      // Não ignorar TOKEN_REFRESHED - pode ser importante para manter sessão ativa
+      // Apenas processar eventos relevantes
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED' || (event === 'TOKEN_REFRESHED' && session?.user)) {
+        if (session?.user) {
+          // Limpar cache ao mudar sessão para garantir dados atualizados
+          clearProfileCache();
+          // Pequeno delay para garantir que a sessão foi persistida
+          await new Promise(resolve => setTimeout(resolve, 150));
+          const user = await authService.getCurrentUser();
+          callback(user);
+        } else {
+          clearProfileCache();
+          callback(null);
+        }
       }
     });
   },

@@ -13,12 +13,39 @@ if (!isSupabaseConfigured()) {
   console.warn('⚠️ Supabase não configurado. Configure as variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no arquivo .env');
 }
 
+// Helper para garantir que localStorage está disponível
+const getStorage = () => {
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+  
+  try {
+    // Testar se localStorage está disponível e funcionando
+    const test = '__localStorage_test__';
+    localStorage.setItem(test, test);
+    localStorage.removeItem(test);
+    return window.localStorage;
+  } catch (e) {
+    console.warn('⚠️ localStorage não disponível, usando memória:', e);
+    // Fallback para um objeto em memória (não persiste, mas evita erros)
+    const memoryStorage: Storage = {
+      getItem: (key: string) => (memoryStorage as any)[key] || null,
+      setItem: (key: string, value: string) => { (memoryStorage as any)[key] = value; },
+      removeItem: (key: string) => { delete (memoryStorage as any)[key]; },
+      clear: () => { Object.keys(memoryStorage).forEach(k => delete (memoryStorage as any)[k]); },
+      get length() { return Object.keys(memoryStorage).filter(k => !['getItem', 'setItem', 'removeItem', 'clear', 'length'].includes(k)).length; },
+      key: (index: number) => Object.keys(memoryStorage).filter(k => !['getItem', 'setItem', 'removeItem', 'clear', 'length'].includes(k))[index] || null,
+    };
+    return memoryStorage;
+  }
+};
+
 export const supabase = createClient(supabaseUrl || 'https://placeholder.supabase.co', supabaseAnonKey || 'placeholder-key', {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
-    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    storage: getStorage(),
     storageKey: 'sb-auth-token',
     flowType: 'pkce',
   },

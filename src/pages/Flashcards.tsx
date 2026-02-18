@@ -32,9 +32,9 @@ function FlashcardViewer({
     <div className="space-y-4 animate-slide-up">
       <div className="flex items-center gap-2">
         {card.subjectName && (
-          <Badge variant="outline" className="text-xs border-primary/30 text-primary">
+        <Badge variant="outline" className="text-xs border-primary/30 text-primary">
             {card.subjectName}
-          </Badge>
+        </Badge>
         )}
         <Badge variant="outline" className="text-xs border-border text-muted-foreground">
           {card.tema}

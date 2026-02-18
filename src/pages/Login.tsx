@@ -27,21 +27,26 @@ export default function LoginPage() {
       await signIn(email, password);
       
       // Aguardar um pouco mais para garantir que tudo foi persistido
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 400));
       
       // Verificar se realmente está logado antes de redirecionar
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError) {
         console.error('Erro ao verificar sessão:', sessionError);
-        throw new Error("Erro ao verificar sessão. Tente novamente.");
+        throw new Error("Falha ao verificar sessão. Tente novamente.");
       }
       
       if (session?.user) {
-        console.log('✅ Sessão confirmada, redirecionando...');
-        // Usar navigate em vez de window.location para manter a sessão
-        // O AuthContext já atualizou o estado, então o ProtectedRoute deve funcionar
-        navigate("/", { replace: true });
+        // Verificar se o token está no localStorage
+        const storedToken = localStorage.getItem('sb-auth-token');
+        if (!storedToken) {
+          console.warn('⚠️ Token não encontrado no localStorage após login');
+        }
+        
+        // Usar window.location para forçar reload completo (evita problemas com PWA e service worker)
+        // Isso garante que o service worker não interfira e a sessão seja carregada corretamente
+        window.location.href = "/";
       } else {
         throw new Error("Falha ao criar sessão. Tente novamente.");
       }

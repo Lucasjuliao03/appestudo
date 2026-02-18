@@ -27,14 +27,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Observar mudanças de autenticação
     const { data: { subscription } } = authService.onAuthStateChange(async (user) => {
       if (mounted) {
-        // Pequeno delay para evitar race conditions
-        await new Promise(resolve => setTimeout(resolve, 50));
+        // Sempre atualizar quando há mudança de autenticação
+        // Pequeno delay para garantir que a sessão foi persistida
+        await new Promise(resolve => setTimeout(resolve, 100));
         if (mounted) {
-          console.log('🔄 Auth state changed:', user ? user.email : 'null');
           setUser(user);
-          // Se já inicializou e recebeu um usuário, atualizar loading
-          if (initializedRef.current && user) {
-            setLoading(false);
+          if (user) {
+            console.log('✅ Auth state changed - User logged in:', user.email);
+          } else {
+            console.log('✅ Auth state changed - User logged out');
           }
         }
       }
@@ -48,33 +49,86 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function loadInitialSession() {
     try {
-      // Primeiro, verificar se há sessão no localStorage
-      const sessionKey = 'sb-auth-token';
-      const hasStoredSession = typeof window !== 'undefined' && 
-        localStorage.getItem(sessionKey) !== null;
+      // Aguardar um pouco para garantir que o Supabase está pronto
+      await new Promise(resolve => setTimeout(resolve, 100));
       
-      if (hasStoredSession) {
-        console.log('🔐 Sessão encontrada no localStorage, carregando...');
+      // Primeiro, verificar se há sessão no localStorage (mais rápido)
+      const { supabase } = await import('@/lib/supabase');
+      
+      // Tentar múltiplas vezes para garantir que a sessão seja carregada
+      let session = null;
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      while (!session && attempts < maxAttempts) {
+        const { data, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.warn(`Tentativa ${attempts + 1}: Erro ao buscar sessão:`, sessionError);
+          if (attempts === maxAttempts - 1) {
+            setUser(null);
+            setLoading(false);
+            initializedRef.current = true;
+            return;
+          }
+          await new Promise(resolve => setTimeout(resolve, 200));
+          attempts++;
+          continue;
+        }
+        
+        session = data.session;
+        
+        if (!session && attempts < maxAttempts - 1) {
+          // Aguardar um pouco e tentar novamente (pode ser que ainda esteja carregando)
+          await new Promise(resolve => setTimeout(resolve, 200));
+          attempts++;
+        }
       }
-      
-      // Timeout de 5 segundos para evitar loading infinito
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout ao carregar sessão')), 5000)
-      );
-      
-      // Tentar carregar da sessão persistida primeiro (sem requisição)
-      const currentUser = await Promise.race([
-        authService.getCurrentUser(),
-        timeoutPromise
-      ]) as AuthUser | null;
-      
-      if (currentUser) {
-        console.log('✅ Sessão carregada com sucesso:', currentUser.email);
+
+      if (session?.user) {
+        // Se tem sessão, buscar dados do usuário
+        const currentUser = await authService.getCurrentUser();
+        if (currentUser) {
+          setUser(currentUser);
+          console.log('✅ Sessão carregada do localStorage:', currentUser.email);
+        } else {
+          console.warn('⚠️ Sessão encontrada mas não foi possível obter dados do usuário');
+          setUser(null);
+        }
       } else {
-        console.log('ℹ️ Nenhuma sessão encontrada');
+        // Se não tem sessão, verificar se há token no localStorage
+        const storedToken = localStorage.getItem('sb-auth-token');
+        if (storedToken) {
+          try {
+            const parsed = JSON.parse(storedToken);
+            if (parsed?.access_token || parsed?.currentSession?.access_token) {
+              // Tentar obter sessão novamente (pode ter sido carregada enquanto verificávamos)
+              await new Promise(resolve => setTimeout(resolve, 300));
+              const { data: { session: retrySession } } = await supabase.auth.getSession();
+              if (retrySession?.user) {
+                const currentUser = await authService.getCurrentUser();
+                if (currentUser) {
+                  setUser(currentUser);
+                  console.log('✅ Sessão restaurada do token:', currentUser.email);
+                } else {
+                  setUser(null);
+                }
+              } else {
+                console.warn('⚠️ Token encontrado mas sessão não pôde ser restaurada');
+                setUser(null);
+              }
+            } else {
+              setUser(null);
+            }
+          } catch (e) {
+            console.warn('⚠️ Erro ao restaurar sessão do token:', e);
+            setUser(null);
+          }
+        } else {
+          setUser(null);
+          console.log('ℹ️ Nenhuma sessão encontrada');
+        }
       }
-      
-      setUser(currentUser);
     } catch (error) {
       console.error('❌ Erro ao carregar sessão:', error);
       setUser(null);
@@ -85,26 +139,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signIn(email: string, password: string) {
-    await authService.signIn(email, password);
+    const { data, error } = await authService.signIn(email, password);
     
+    if (error) {
+      throw error;
+    }
+
     // Aguardar para garantir que a sessão foi persistida no localStorage
     await new Promise(resolve => setTimeout(resolve, 200));
     
     // Verificar se a sessão foi realmente persistida
-    const { data: { session } } = await import('@/lib/supabase').then(m => m.supabase.auth.getSession());
+    const { supabase } = await import('@/lib/supabase');
+    const { data: { session } } = await supabase.auth.getSession();
     
-    if (!session) {
-      throw new Error('Falha ao persistir sessão. Tente novamente.');
+    if (!session?.user) {
+      throw new Error('Falha ao criar sessão. Tente novamente.');
     }
-    
-    console.log('✅ Login realizado, sessão persistida:', session.user.email);
-    
+
     // Buscar usuário atualizado
     const currentUser = await authService.getCurrentUser();
     setUser(currentUser);
     
     // Aguardar mais um pouco para garantir que o estado foi atualizado
     await new Promise(resolve => setTimeout(resolve, 100));
+    
+    console.log('✅ Login realizado com sucesso:', currentUser?.email);
   }
 
   async function signUp(email: string, password: string) {
